@@ -25,7 +25,6 @@ Maintainer: Miguel Luis and Gregory Cristian
 #define FIFO_RX_SIZE                                512
 
 uint8_t UART_RxBuffer[FIFO_RX_SIZE];
-uint8_t GPS_RxBuffer[FIFO_RX_SIZE];
 
 typedef struct
 {
@@ -72,12 +71,6 @@ void UartMcuConfig( Uart_t *obj, UartMode_t mode, uint32_t baudrate, WordLength_
       handle->Instance = USART1;
       irq = USART1_IRQn;
       FifoInit( &obj->FifoRx, UART_RxBuffer, FIFO_RX_SIZE );
-    }
-    else if( obj->UartId == UART_3 )
-    {
-      handle->Instance = USART3;
-      irq = USART3_IRQn;
-      FifoInit( &GpsUart.FifoRx, GPS_RxBuffer, FIFO_RX_SIZE );
     }
     else
       return;
@@ -255,11 +248,6 @@ void HAL_UART_RxCpltCallback( UART_HandleTypeDef *handle )
     {
       uart = &Uart1;
       uartId = UART_1;
-    }
-    else if( handle == &UartContext[UART_3].UartHandle )
-    {
-      uart = &GpsUart;
-      uartId = UART_3;
     }
     else // Unknown UART peripheral skip processing
       return;

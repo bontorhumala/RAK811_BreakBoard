@@ -6,7 +6,7 @@
  (______/|_____)_|_|_| \__)_____)\____)_| |_|
  (C)2013 Semtech
 
- Description: LoRaMac classA device implementation
+ Description: LoRaMac class A device implementation
 
  License: Revised BSD License, see LICENSE.TXT file include in the project
 
@@ -51,7 +51,7 @@
  */
 #define LORAWAN_ADR_ON                              1
 
-#if defined( REGION_EU868 )
+#if defined( REGION_AU915 )
 
 #include "LoRaMacTest.h"
 
@@ -205,97 +205,38 @@ void dump_hex2str(uint8_t *buf, uint8_t len) {
 	printf("\r\n");
 }
 
-/*!
- * \brief   Prepares the payload of the frame
- */
-void test_gps(void) {
-	double latitude, longitude = 0;
-	int16_t altitudeGps = 0xFFFF;
-	uint8_t ret;
-	ret = GpsGetLatestGpsPositionDouble(&latitude, &longitude);
-	altitudeGps = GpsGetLatestGpsAltitude(); // in m
-	//	printf("[Debug]: latitude: %f, longitude: %f , altitudeGps: %d \n", latitude, longitude, altitudeGps);	    	
-}
-
-void test_temp(void) {
-	int8_t tempr = 25;
-
-	LIS3DH_GetTempRaw(&tempr); //only tempr changed value
-	tempr = tempr + 20; // temprature should be calibration  in a right temp for every device
-	printf("[Debug]: tempr: %d Bat: %dmv\r\n", tempr,
-			BoardBatteryMeasureVolage());
-}
-
-uint8_t GPS_GETFAIL = FAIL;
-
 static void PrepareTxFrame(uint8_t port) {
-	double latitude, longitude = 0;
-	int16_t altitudeGps = 0xFFFF;
-	int8_t tempr = 25;
 	uint8_t ret;
-	uint16_t bat;
+	uint16_t acc;
+	uint16_t acv;
 
 	switch (port) {
 	//https://mydevices.com/cayenne/docs/lora/#lora-cayenne-low-power-payload
 	//cayenne LPP GPS
 	case 2: {
-		ret = GpsGetLatestGpsPositionDouble(&latitude, &longitude);
-		altitudeGps = GpsGetLatestGpsAltitude(); // in m
-		//printf("[Debug]: latitude: %f, longitude: %f , altitudeGps: %d \n", latitude, longitude, altitudeGps);
-		printf("GpsGetLatestGpsPositionDouble ret = %d\r\n", ret);
-		if (ret == SUCCESS) {
-			AppData[0] = 0x01;
-			AppData[1] = 0x88;
-			AppData[2] = ((int32_t) (latitude * 10000) >> 16) & 0xFF;
-			AppData[3] = ((int32_t) (latitude * 10000) >> 8) & 0xFF;
-			AppData[4] = ((int32_t) (latitude * 10000)) & 0xFF;
-			AppData[5] = ((int32_t) (longitude * 10000) >> 16) & 0xFF;
-			AppData[6] = ((int32_t) (longitude * 10000) >> 8) & 0xFF;
-			AppData[7] = ((int32_t) (longitude * 10000)) & 0xFF;
-			AppData[8] = ((altitudeGps * 100) >> 16) & 0xFF;
-			AppData[9] = ((altitudeGps * 100) >> 8) & 0xFF;
-			AppData[10] = (altitudeGps * 100) & 0xFF;
-			AppDataSize = 11;
-		} else {
-			AppDataSize = 0;
-			GPS_GETFAIL = SUCCESS;
-		}
 	}
 		break;
-		//cayenne LPP Temp
+		//cayenne LPP AC voltage and current
 	case 3: {
 		AppData[0] = 0x02;
-		AppData[1] = 0x67;
-#if 1
-		LIS3DH_GetTempRaw(&tempr); //only tempr changed value
-		tempr = tempr + 20; // temprature should be calibration  in a right temp for every device
-#else
-				tempr = randr( 15, 22);
-#endif
-		AppData[2] = ((tempr * 10) >> 8) & 0xFF;
-		AppData[3] = (tempr * 10) & 0xFF;
+		AppData[1] = 0x03; //Analog Output
+		acc = BoardACMeasureCurrent();
+		AppData[2] = ((acc / 10) >> 8) & 0xFF;
+		AppData[3] = (acc / 10) & 0xFF;
+		AppDataSize = 8;
 
 		AppData[4] = 0x04;
 		AppData[5] = 0x03; //Analog Output
-		bat = BoardBatteryMeasureVolage();
-		AppData[6] = ((bat / 10) >> 8) & 0xFF;
-		AppData[7] = (bat / 10) & 0xFF;
+		acv = BoardACMeasureVoltage();
+		AppData[6] = ((acv / 10) >> 8) & 0xFF;
+		AppData[7] = (acv / 10) & 0xFF;
 		AppDataSize = 8;
-		printf("[Debug]: tempr: %d Bat: %dmv\r\n", tempr, bat);
+		printf("[Debug]: AC voltage %dmv, current: %dmv\r\n", 
+			BoardACMeasureVoltage(), BoardACMeasureCurrent());
 	}
 		break;
 		//cayenne LPP Acceleration
 	case 4: {
-		AppData[0] = 0x03;
-		AppData[1] = 0x71;
-		for (uint8_t index = 0; index < 6; index++) {
-			LIS3DH_ReadReg(LIS3DH_OUT_X_L + index, AppData + 2 + index);
-			DelayMs(2);
-		}
-		AppDataSize = 8;
-		printf("[Debug]: ACC X:%04X Y:%04X Z:%04X\r\n",
-				AppData[3] << 8 | AppData[2], AppData[5] << 8 | AppData[4],
-				AppData[7] << 8 | AppData[6]);
 	}
 		break;
 	case 224:
@@ -483,7 +424,7 @@ static void McpsIndication(McpsIndication_t *mcpsIndication) {
 		case 2:
 			if (mcpsIndication->BufferSize == 1) {
 				AppLedStateOn = mcpsIndication->Buffer[0] & 0x01;
-				GpioWrite(&Led2, ((AppLedStateOn & 0x01) != 0) ? 0 : 1);
+				// GpioWrite(&Led2, ((AppLedStateOn & 0x01) != 0) ? 0 : 1);
 			}
 			break;
 		case 224:
@@ -512,7 +453,6 @@ static void McpsIndication(McpsIndication_t *mcpsIndication) {
 #if defined( REGION_EU868 )
 					LoRaMacTestSetDutyCycleOn( false );
 #endif
-					GpsStop();
 				}
 			} else {
 				ComplianceTest.State = mcpsIndication->Buffer[0];
@@ -531,7 +471,6 @@ static void McpsIndication(McpsIndication_t *mcpsIndication) {
 #if defined( REGION_EU868 )
 					LoRaMacTestSetDutyCycleOn( LORAWAN_DUTYCYCLE_ON );
 #endif
-					GpsStart();
 					break;
 				case 1: // (iii, iv)
 					AppDataSize = 2;
@@ -579,7 +518,6 @@ static void McpsIndication(McpsIndication_t *mcpsIndication) {
 #if defined( REGION_EU868 )
 					LoRaMacTestSetDutyCycleOn( LORAWAN_DUTYCYCLE_ON );
 #endif
-					GpsStart();
 
 					mlmeReq.Type = MLME_JOIN;
 
@@ -628,7 +566,7 @@ static void McpsIndication(McpsIndication_t *mcpsIndication) {
 	}
 
 	// Switch LED 1 ON for each received downlink
-	GpioWrite(&Led1, 0);
+	// GpioWrite(&Led1, 0);
 	TimerStart(&Led1Timer);
 }
 
@@ -646,7 +584,7 @@ static void MlmeConfirm(MlmeConfirm_t *mlmeConfirm) {
 			DeviceState = DEVICE_STATE_SEND;
 			printf("OTAA Join Success \r\n");
 			// Switch LED 1 ON
-			GpioWrite(&Led1, 0);
+			// GpioWrite(&Led1, 0);
 			TimerStart(&Led1Timer);
 		} else {
 			// Join was not successful. Try to join again
@@ -684,7 +622,7 @@ int main(void) {
 	BoardInitPeriph();
 
 	DeviceState = DEVICE_STATE_INIT;
-	printf("RAK811 BreakBoard soft version: 1.0.2\r\n");
+	printf("RAK811 BreakBoard software version: 1.0.2\r\n");
 
 	while (1) {
 		switch (DeviceState) {
@@ -748,7 +686,7 @@ int main(void) {
 			dump_hex2str(DevEui, 8);
 			printf("AppEui: ");
 			dump_hex2str(AppEui, 8);
-			printf("AppKey: ");
+			printf("AppKeys: ");
 			dump_hex2str(AppKey, 16);
 
 			mlmeReq.Type = MLME_JOIN;
@@ -774,13 +712,11 @@ int main(void) {
 			mibReq.Param.ChannelsDefaultMask = ch_mask;
 			LoRaMacMibSetRequestConfirm(&mibReq);
 #endif
-
 			if (NextTx == true) {
 				LoRaMacMlmeRequest(&mlmeReq);
 				printf("OTAA Join Start... \r\n");
 			}
 			DeviceState = DEVICE_STATE_SLEEP;
-
 #else
 			// Choose a random device address if not already defined in Commissioning.h
 			if( DevAddr == 0 )
@@ -831,12 +767,7 @@ int main(void) {
 		case DEVICE_STATE_SEND: {
 			if (NextTx == true) {
 				PrepareTxFrame(AppPort);
-
-				if (GPS_GETFAIL == SUCCESS) {
-					GPS_GETFAIL = FAIL;
-				} else {
-					NextTx = SendFrame();
-				}
+				NextTx = SendFrame();
 
 				AppPort++;
 				if (AppPort >= 5) {
@@ -871,19 +802,6 @@ int main(void) {
 			DeviceState = DEVICE_STATE_INIT;
 			break;
 		}
-		}
-		if (GpsGetPpsDetectedState() == true) {
-			// Switch LED 2 ON
-			GpioWrite(&Led2, 0);
-			TimerStart(&Led2Timer);
-		}
-		if (Lis3dhGetIntState() == true) {
-			Lis3dh_IntEventClear();
-			for (uint8_t index = 0; index < 6; index++) {
-				LIS3DH_ReadReg(LIS3DH_OUT_X_L + index, AppData + 2 + index);
-				DelayMs(1);
-			}
-			//printf("[Debug]: ACC X:%04X Y:%04X Z:%04X\r\n", AppData[3]<<8 | AppData[2], AppData[5]<<8 | AppData[4], AppData[7]<<8 | AppData[6]);
 		}
 	}
 }

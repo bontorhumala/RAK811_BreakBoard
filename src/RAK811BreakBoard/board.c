@@ -22,18 +22,20 @@ Maintainer: Miguel Luis and Gregory Cristian
 #define         ID3                                 ( 0x1FF80064 )
 
 /*!
- * LED GPIO pins objects
+ * IO pins objects for LEDs, relay, and dimmer
  */
+Gpio_t relay;
+Gpio_t dimmer;
 Gpio_t Led1;
 Gpio_t Led2;
 
 /*
  * MCU objects
  */
-Adc_t Adc;
+Adc_t Adc1;
+Adc_t Adc2;
 I2c_t I2c;
 Uart_t Uart1;
-Uart_t GpsUart;
 #if defined( USE_USB_CDC )
 Uart_t UartUsb;
 #endif
@@ -103,20 +105,18 @@ void BoardEnableIrq( void )
     }
 }
 
+/*
+ * Initialize peripherals such as LEDs, relay, and dimmer
+ * By default, set to HIGH 
+*/
 void BoardInitPeriph( void )
 {
-    Gpio_t ioPin;
-
     // Init the GPIO pins
-    GpioInit( &ioPin, GPS_POWER_ON_PIN, PIN_OUTPUT, PIN_PUSH_PULL, PIN_NO_PULL, 0 );
     GpioInit( &Led1, LED_1, PIN_OUTPUT, PIN_PUSH_PULL, PIN_NO_PULL, 0 );
     GpioInit( &Led2, LED_2, PIN_OUTPUT, PIN_PUSH_PULL, PIN_NO_PULL, 0 );
 
-    //Init GPS
-    GpsInit( );
-	
-	//Init LIS3DH
-	LIS3DH_Init( );
+	GpioInit(&relay, PA_14, PIN_OUTPUT, PIN_PUSH_PULL, PIN_PULL_UP, 1);
+	GpioInit(&dimmer, PA_15, PIN_OUTPUT, PIN_PUSH_PULL, PIN_PULL_UP, 1);
 
     // Switch LED 1, 2 OFF
     GpioWrite( &Led1, 1 );
@@ -150,7 +150,8 @@ void BoardInitMcu( void )
         SystemClockReConfig( );
     }
 
-    AdcInit( &Adc, BAT_LEVEL_PIN );
+    AdcInit( &Adc1, VAC_PIN );
+    AdcInit( &Adc2, IAC_PIN );
 
     SpiInit( &SX1276.Spi, RADIO_MOSI, RADIO_MISO, RADIO_SCLK, NC );
     SX1276IoInit( );
@@ -170,7 +171,8 @@ void BoardDeInitMcu( void )
 {
     //Gpio_t ioPin;
 
-    AdcDeInit( &Adc );
+    AdcDeInit( &Adc1 );
+    AdcDeInit( &Adc2 );
 
     SpiDeInit( &SX1276.Spi );
     SX1276IoDeInit( );
@@ -213,71 +215,56 @@ void BoardGetUniqueId( uint8_t *id )
  */
 #define ADC_MAX_VALUE                               4095
 
-/*!
- * Battery thresholds
- */
-#define BATTERY_MAX_LEVEL                           4150 // mV
-#define BATTERY_MIN_LEVEL                           3200 // mV
-#define BATTERY_SHUTDOWN_LEVEL                      3100 // mV
-
-static uint16_t BatteryVoltage = BATTERY_MAX_LEVEL;
-
-uint16_t BoardBatteryMeasureVolage( void )
+/* 
+ * Measure AC voltage using ZMPT101B trafo
+*/
+uint16_t BoardACMeasureVoltage( void )
 {
     uint16_t vdd = 0;
     uint16_t vref = VREFINT_CAL;
     uint16_t vdiv = 0;
-    uint16_t batteryVoltage = 0;
+    uint16_t ACVoltage = 0;
 
-    vdiv = AdcReadChannel( &Adc, BAT_LEVEL_CHANNEL );
+    vdiv = AdcReadChannel( &Adc1, VAC_CHANNEL );
     //vref = AdcReadChannel( &Adc, ADC_CHANNEL_VREFINT );
 
     vdd = ( float )FACTORY_POWER_SUPPLY * ( float )VREFINT_CAL / ( float )vref;
-    batteryVoltage = vdd * ( ( float )vdiv / ( float )ADC_MAX_VALUE );
+    ACVoltage = vdd * ( ( float )vdiv / ( float )ADC_MAX_VALUE );
 
     //                                vDiv
     // Divider bridge  VBAT <-> 100k -<--|-->- 150k <-> GND => vBat = (5 * vDiv )/3
-    batteryVoltage = (5 * batteryVoltage )/3;
-    return batteryVoltage;
+    ACVoltage = (5 * ACVoltage )/3;
+    return ACVoltage;
 }
 
-uint32_t BoardGetBatteryVoltage( void )
+/* 
+ * Measure AC current using ACS 712
+*/
+uint16_t BoardACMeasureCurrent( void )
 {
-    return BatteryVoltage;
+    uint16_t vdd = 0;
+    uint16_t vref = VREFINT_CAL;
+    uint16_t vdiv = 0;
+    uint16_t ACCurrent = 0;
+
+    vdiv = AdcReadChannel( &Adc2, IAC_CHANNEL );
+    //vref = AdcReadChannel( &Adc, ADC_CHANNEL_VREFINT );
+
+    vdd = ( float )FACTORY_POWER_SUPPLY * ( float )VREFINT_CAL / ( float )vref;
+    ACCurrent = vdd * ( ( float )vdiv / ( float )ADC_MAX_VALUE );
+
+    //                                vDiv
+    // Divider bridge  VBAT <-> 100k -<--|-->- 150k <-> GND => vBat = (5 * vDiv )/3
+    ACCurrent = (5 * ACCurrent )/3;
+    return ACCurrent;
 }
 
+/*
+ * Since we do not use battery, assume battery always BATTERY_MAX_LEVEL
+*/
 uint8_t BoardGetBatteryLevel( void )
 {
-    uint8_t batteryLevel = 0;
-
-    BatteryVoltage = BoardBatteryMeasureVolage( );
-
-    if( GetBoardPowerSource( ) == USB_POWER )
-    {
-        batteryLevel = 0;
-    }
-    else
-    {
-        if( BatteryVoltage >= BATTERY_MAX_LEVEL )
-        {
-            batteryLevel = 254;
-        }
-        else if( ( BatteryVoltage > BATTERY_MIN_LEVEL ) && ( BatteryVoltage < BATTERY_MAX_LEVEL ) )
-        {
-            batteryLevel = ( ( 253 * ( BatteryVoltage - BATTERY_MIN_LEVEL ) ) / ( BATTERY_MAX_LEVEL - BATTERY_MIN_LEVEL ) ) + 1;
-        }
-        else if( ( BatteryVoltage > BATTERY_SHUTDOWN_LEVEL ) && ( BatteryVoltage <= BATTERY_MIN_LEVEL ) )
-        {
-            batteryLevel = 1;
-        }
-        else //if( BatteryVoltage <= BATTERY_SHUTDOWN_LEVEL )
-        {
-            batteryLevel = 255;
-            //GpioInit( &DcDcEnable, DC_DC_EN, PIN_OUTPUT, PIN_PUSH_PULL, PIN_NO_PULL, 0 );
-            //GpioInit( &BoardPowerDown, BOARD_POWER_DOWN, PIN_OUTPUT, PIN_PUSH_PULL, PIN_NO_PULL, 1 );
-        }
-    }
-    return batteryLevel;
+    return 254;
 }
 
 static void BoardUnusedIoInit( void )

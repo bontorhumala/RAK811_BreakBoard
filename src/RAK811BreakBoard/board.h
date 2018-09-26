@@ -32,12 +32,10 @@ Maintainer: Miguel Luis and Gregory Cristian
 #include "uart.h"
 #include "radio.h"
 #include "sx1276/sx1276.h"
-#include "gps.h"
-#include "lis3dh.h"
-#include "gps-board.h"
 #include "rtc-board.h"
 #include "sx1276-board.h"
 #include "uart-board.h"
+#include "adc-board.h"
 
 #if defined( USE_USB_CDC )
 #include "uart-usb-board.h"
@@ -107,20 +105,15 @@ Maintainer: Miguel Luis and Gregory Cristian
 
 #define I2C_SCL                                     PB_8
 #define I2C_SDA                                     PB_9
-#define LIS3DH_INT1_PIN		                    			PB_14
-#define LIS3DH_INT2_PIN		                    			PB_15
 
 #define UART_TX                                     PA_9
 #define UART_RX                                     PA_10
 
-#define GPS_UART        		            						UART_3 
-#define GPS_POWER_ON_PIN		            						PA_15
-#define GPS_UART_TX                                 PB_10
-#define GPS_UART_RX                                 PB_11
-#define GPS_PPS_PIN                                 PA_0
+#define VAC_PIN                                     PA_1
+#define VAC_CHANNEL                                 ADC_CHANNEL_2
 
-#define BAT_LEVEL_PIN                               PA_2
-#define BAT_LEVEL_CHANNEL                           ADC_CHANNEL_2
+#define IAC_PIN                                     PA_2
+#define IAC_CHANNEL                                 ADC_CHANNEL_2
 
 #define SWDIO                                       PA_13
 #define SWCLK                                       PA_14
@@ -138,7 +131,6 @@ extern Gpio_t Led2;
 extern Adc_t Adc;
 extern I2c_t I2c;
 extern Uart_t Uart1;
-extern Uart_t GpsUart;
 #if defined( USE_USB_CDC )
 extern Uart_t UartUsb;
 #endif
@@ -183,12 +175,18 @@ void BoardInitPeriph( void );
 void BoardDeInitMcu( void );
 
 /*!
- * \brief Measure the Battery voltage
+ * \brief Measure the AC voltage
  *
- * \retval value  battery voltage in volts
+ * \retval value  AC voltage in volts
  */
-uint32_t BoardGetBatteryVoltage( void );
-uint16_t BoardBatteryMeasureVolage( void );
+uint16_t BoardACMeasureVoltage( void );
+
+/*!
+ * \brief Measure the AC current
+ *
+ * \retval value  AC current in ampere
+ */
+uint16_t BoardACMeasureCurrent( void );
 
 /*!
  * \brief Get the current battery level
