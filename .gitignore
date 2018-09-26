@@ -7,3 +7,7 @@
 .pioenvs
 .piolibdeps
 .vscode/.browse.c_cpp.db*
+.vscode/*
+*.yml
+*.json
+
